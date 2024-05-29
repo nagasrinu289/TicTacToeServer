@@ -23,8 +23,7 @@ io.on("connection", (socket) => {
 
   socket.on("request_to_play", (data) => {
     const currentUser = allUsers[socket.id];
-    console.log(data.playerName);
-    currentUser.playerName = data.playerName; // Use consistent property naming
+    currentUser.playerName = data.playerName;
     let opponentPlayer = null;
 
     for (const key in allUsers) {
@@ -57,14 +56,78 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("playerMoveFromClient", (data) => {
+    const currentUser = allUsers[socket.id];
+    if (!currentUser.playing) return;
+
+    // Find the opponent
+    let opponentPlayer = null;
+    for (const key in allUsers) {
+      if (allUsers[key].playing && key !== socket.id) {
+        opponentPlayer = allUsers[key];
+        break;
+      }
+    }
+
+    if (opponentPlayer) {
+      opponentPlayer.socket.emit("playerMoveFromServer", data.board);
+    }
+  });
+
+  socket.on("gameOver", () => {
+    const currentUser = allUsers[socket.id];
+    if (currentUser && currentUser.playing) {
+      currentUser.playing = false;
+
+      let opponentPlayer = null;
+      for (const key in allUsers) {
+        if (allUsers[key].playing && key !== socket.id) {
+          opponentPlayer = allUsers[key];
+          break;
+        }
+      }
+
+      if (opponentPlayer) {
+        opponentPlayer.playing = false;
+      }
+    }
+  });
+
   socket.on("disconnect", () => {
-    if (allUsers[socket.id]) {
+    const currentUser = allUsers[socket.id];
+    if (currentUser) {
+      if (currentUser.playing) {
+        let opponentPlayer = null;
+        for (const key in allUsers) {
+          if (allUsers[key].playing && key !== socket.id) {
+            opponentPlayer = allUsers[key];
+            break;
+          }
+        }
+
+        if (opponentPlayer) {
+          opponentPlayer.playing = false;
+          opponentPlayer.socket.emit("opponentDisconnected");
+        }
+      }
       console.log("User disconnected: " + socket.id);
-      delete allUsers[socket.id]; // Properly remove user from the list
+      delete allUsers[socket.id];
     }
   });
 });
 
-httpServer.listen(3000, () => {
-  console.log("Server listening on port 3000");
-});
+// httpServer.listen(3000, () => {
+//   console.log("Server listening on port 3000");
+// });
+
+
+module.exports = (req, res) => {
+  if (!res.socket.server.io) {
+    res.socket.server.io = io;
+    io.attach(res.socket.server);
+    console.log("Socket.io server started");
+  } else {
+    console.log("Socket.io server already running");
+  }
+  res.end();
+};
